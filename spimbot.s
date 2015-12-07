@@ -54,6 +54,11 @@ num_cols: .word 64
 #all the text for the code
 .text
 
+############################################################
+
+#ALL THE PUZZLE CODE
+
+############################################################
 #All the code for allocate_new_node
 .globl allocate_new_node
 allocate_new_node:
@@ -89,7 +94,7 @@ set_node:
 .globl remove_node #remove all nodes
 remove_node:
 	move $t8, $a0
-loop:
+loop1:
 	lw $t0, 0($t8) # entry = *head
 	beq $t0, $0, ret
 
@@ -108,7 +113,7 @@ skip:
 	add $t0, $t0, 8
 	move $t8, $t0
 
-	j loop
+	j loop1
 
 ret:
 	jr	$ra
@@ -128,7 +133,7 @@ search_neighbors:
 	sw $s6, 28($sp) #next_col
 	sw $s7, 32($sp) #next_node
 
-	beq $a1, 0, ret #if (word == NULL)
+	beq $a1, 0, ret2 #if (word == NULL)
 
 	move $s0, $a0 #s0 = puzzle
 	move $s1, $a1 #s1 = word
@@ -137,11 +142,9 @@ search_neighbors:
 
 	li $s4, 0 #s4 = i
 
-loop:
+loop2:
 	li $t0, 4 #just the number 4
-	bge $s4, $t0, ret #for (int i = 0; i < 4; 
-
-
+	bge $s4, $t0, ret2 #for (int i = 0; i < 4;
 
 	mul $t1, $s4, 4 #i*4bits
 	mul $t7, $t1, 2 #i*4bits*2cols
@@ -236,9 +239,9 @@ if2:
 
 iterate:
 	add $s4, $s4, 1 #increment i
-	j loop #return to loop
+	j loop2 #return to loop
 
-ret:
+ret2:
 	li $v0, 0 #make v0 NULL
 
 	lw $ra, 0($sp) #return address
@@ -254,13 +257,22 @@ ret:
 	add $sp, $sp, 36 #fix stack
 	jr	$ra #return NULL
 
-##ALL THE CODE FOR FRUIT SMASHING
+############################################################
+
+#END OF PUZZLE CODE
+
+############################################################
+
+############################################################
+
+#ALL THE FRUIT SMASH CODE
+
+############################################################
 main:
 
-	'''
+	
 	sub $sp $sp 36
 
-	
 	sw $ra, 0($sp) #return address
 	sw $s0, 4($sp) #puzzle
 	sw $s1, 8($sp) #word
@@ -270,20 +282,24 @@ main:
 	sw $s5, 24($sp) #next_row
 	sw $s6, 28($sp) #next_col
 	sw $s7, 32($sp) #next_node
-	
 
+	#Enable the interrupts
+	la $t0, fruit_data
+	sw $t0, FRUIT_SCAN
+	
 	la $s0, puzzle_grid
 	la $s1, puzzle_word
 	la $s2, node_memory
-	'''
 
-	la $t0, fruit_data
-	sw $t0, FRUIT_SCAN
+	sw $s0, REQUEST_PUZZLE
+	#sw $s1, REQUEST_WORD 
+
 	# enable interrupts
-	li	$t4, FRUIT_SMOOSHED_INT_MASK		# timer interrupt enable bit
-	or	$t4, $t4, BONK_MASK	# bonk interrupt bit
-	or	$t4, $t4, 1		# global interrupt enable
+	li	$t4, FRUIT_SMOOSHED_INT_MASK # timer interrupt enable bit
+	or	$t4, $t4, BONK_MASK	 			#bonk interrupt bit
+	or	$t4, $t4, 1		 		    #global interrupt enable
 	mtc0	$t4, $12		# set interrupt mask (Status register)
+
 
 bottom:
 	lw $t1, BOT_Y
@@ -294,15 +310,6 @@ bottom:
 	sw $t2, ANGLE #angle 90
 	li $t2, 10
 	sw $t2, VELOCITY #velocity 10
-
-	la $a0, puzzle_grid
-	lw $a0, 0($a0)
-	la $a1, puzzle_word
-	lw $a1, 0($a1)
-	li $a2, 0
-	li $a3, 0
-	#la $a2, node_memory
-	j search_neighbors
 
 find_fruit:
 	la $t6, count # count address
@@ -343,13 +350,13 @@ right:
 	beq $t3, $t1, wait
 	bgt $t3, $t1, main
 
-	la $a0, puzzle_grid
-	lw $a0, 0($a0)
-	la $a1, puzzle_word
-	lw $a1, 0($a1)
-	li $a2, 0
-	li $a3, 0
-	j search_neighbors
+	#la $a0, puzzle_grid
+	#lw $a0, 0($a0)
+	#la $a1, puzzle_word
+	#lw $a1, 0($a1)
+	#li $a2, 0
+	#li $a3, 0
+	#j search_neighbors
 
 left:
 
@@ -361,13 +368,13 @@ left:
 	beq $t3, $t1, wait
 	blt $t3, $t1, main
 
-	la $a0, puzzle_grid
-	lw $a0, 0($a0)
-	la $a1, puzzle_word
-	lw $a1, 0($a1)
-	li $a2, 0
-	li $a3, 0
-	j search_neighbors
+	#la $a0, puzzle_grid
+	#lw $a0, 0($a0)
+	#la $a1, puzzle_word
+	#lw $a1, 0($a1)
+	#li $a2, 0
+	#li $a3, 0
+	#j search_neighbors
 
 wait:
 	la $t0, fruit_data
@@ -469,6 +476,23 @@ smash:
 
 	la $t6, FRUIT_SMASH
 	li $t8, 0
+
+request_puzzle:
+	
+	la $a0, puzzle_grid
+	lw $a0, 0($a0)
+	la $a1, puzzle_word
+	lw $a1, 0($a1)
+	li $a2, 0
+	li $a3, 0
+	la $a2, node_memory
+	jal search_neighbors
+
+	sw $v0, SUBMIT_SOLUTION
+
+	sw $a1, REQUEST_PUZZLE_ACK
+
+	j interrupt_dispatch
 
 smashing:
 	sw $zero, 0($t6) #smash
