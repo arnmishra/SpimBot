@@ -44,6 +44,7 @@ SMASH_TOTAL: .word 1 #SMASH_TOTAL = 1
 puzzle_grid: .space 8192
 puzzle_word: .space 128
 node_memory: .space 4096
+puzzle_received_flag: .word 1 #puzzle_received_flag = 0
 new_node_address: .word node_memory
 
 .globl num_rows
@@ -53,244 +54,6 @@ num_cols: .word 64
 
 #all the text for the code
 .text
-
-############################################################
-
-#ALL THE FRUIT SMASH CODE
-
-############################################################
-main:
-
-	sub $sp $sp 36
-
-	sw $ra, 0($sp) #return address
-	sw $s0, 4($sp) #puzzle
-	sw $s1, 8($sp) #word
-	sw $s2, 12($sp) #row
-	sw $s3, 16($sp) #col
-	sw $s4, 20($sp) #i
-	sw $s5, 24($sp) #next_row
-	sw $s6, 28($sp) #next_col
-	sw $s7, 32($sp) #next_node
-
-	#Enable the interrupts
-	la $t0, fruit_data
-	sw $t0, FRUIT_SCAN
-
-	# enable interrupts
-	li	$t4, FRUIT_SMOOSHED_INT_MASK #timer interrupt enable bit
-	or	$t4, $t4, BONK_MASK	 			#bonk interrupt bit
-	or $t4, $t4, REQUEST_PUZZLE_INT_MASK #request_puzzle interrupt bit
-	or $t4, $t4, OUT_OF_ENERGY_INT_MASK #out_of_energy bit
-	or	$t4, $t4, 1		 		    #global interrupt enable
-	mtc0	$t4, $12		# set interrupt mask (Status register)
-
-
-bottom:
-	lw $t1, BOT_Y
-	bge $t1, 294, find_fruit
-	li $t2, 1
-	sw $t2, ANGLE_CONTROL #absolute angle
-	li $t2, 90
-	sw $t2, ANGLE #angle 90
-	li $t2, 10
-	sw $t2, VELOCITY #velocity 10
-
-find_fruit:
-	la $t6, count # count address
-	lw $t7, 0($t6) # count value
-	la $t6, SMASH_TOTAL
-	lw $t6, 0($t6)
-	bge $t7, $t6, get_bonked
-
-	li $t2, 10
-	sw $t2, VELOCITY #velocity 10
-	lw $t4, 0($t0)
-	lw $t3, 8($t0) #the x coordinate of the fruit
-	lw $t1, BOT_X
-	beq $t3, $t1, wait
-	bgt $t3, $t1, right
-	blt $t3, $t1, left
-
-get_bonked:
-	li $t8, 1
-	sw $t8, ANGLE_CONTROL #absolute angle
-	li $t8, 90
-	sw $t8, ANGLE #angle 90
-	li $t8, 10
-	sw $t8, VELOCITY #velocity 10
-	
-	la $t6, count # count address
-	lw $t7, 0($t6) # count value
-	beq $t7, $zero, find_fruit
-
-	j get_bonked
-
-right:
-
-	li $t2, 1
-	sw $t2, ANGLE_CONTROL #absolute angle
-	sw $zero, ANGLE #angle 0 (turn right)
-	lw $t1, BOT_X
-	beq $t3, $t1, wait
-	bgt $t3, $t1, main
-
-	#PUZZLE CODE
-	#la $a0, puzzle_grid
-	#lw $a0, 0($a0)
-	#la $a1, puzzle_word
-	#lw $a1, 0($a1)
-	#j find_row_col_of_first_word
-
-	#jal search_neighbors
-
-left:
-
-	li $t2, 1
-	sw $t2, ANGLE_CONTROL #absolute angle
-	li $t2, 180
-	sw $t2, ANGLE #angle 180 (left)
-	lw $t1, BOT_X
-	beq $t3, $t1, wait
-	blt $t3, $t1, main
-
-	#la $a0, puzzle_grid
-	#lw $a0, 0($a0)
-	#la $a1, puzzle_word
-	#lw $a1, 0($a1)
-	#j find_row_col_of_first_word
-
-#Once the X-coordinates of the Bot matches the X-coordinate of the fruit
-#It waits until the fruit falls down at the Bot
-wait:
-	
-	#PUZZLE STUFF
-	la $s0, puzzle_grid
-	sw $s0, REQUEST_PUZZLE
-
-	la $s1, puzzle_word
-	sw $s1, REQUEST_WORD
-
-	#FRUIT STUFF
-	la $t0, fruit_data
-	sw $t0, FRUIT_SCAN
-	sw $zero, VELOCITY #velocity 0
-	lw $t5, 0($t0) #id
-	bne $t4, $t5, find_fruit
-	j wait
-
-
-.kdata				# interrupt handler data (separated just for readability)
-chunkIH:	.space 8	# space for two registers
-
-non_intrpt_str:	.asciiz "Non-interrupt exception\n"
-unhandled_str:	.asciiz "Unhandled interrupt type\n"
-
-
-.ktext 0x80000180
-interrupt_handler:
-.set noat
-	move	$k1, $at		# Save $at                               
-.set at
-	la	$k0, chunkIH
-	sw	$a0, 0($k0)		# Get some free registers                  
-	sw	$a1, 4($k0)		# by storing them to a global variable     
-
-	mfc0	$k0, $13		# Get Cause register                       
-	srl	$a0, $k0, 2                
-	and	$a0, $a0, 0xf		# ExcCode field                            
-	bne	$a0, 0, non_intrpt         
-
-interrupt_dispatch:			# Interrupt:                             
-	mfc0	$k0, $13		# Get Cause register, again                 
-	beq	$k0, 0, done		# handled all outstanding interrupts     
-
-	and	$a0, $k0, FRUIT_SMOOSHED_INT_MASK	# is there a smoosh interrupt?
-	bne	$a0, 0, fruit_smooshed_interrupt
-
-	and	$a0, $k0, BONK_MASK	# is there a bonk interrupt?                
-	bne	$a0, 0, bonk_interrupt 
-
-	# add dispatch for other interrupt types here.
-	and $a0, $k0, REQUEST_PUZZLE_INT_MASK
-	bne $a0, 0, request_puzzle_interrupt
-
-	#li	$v0, PRINT_STRING	# Unhandled interrupt types
-	la	$a0, unhandled_str
-	syscall 
-	j	done
-
-
-fruit_smooshed_interrupt:
-
-	la $t6, count # count address
-	lw $t7, 0($t6) # count value
-	addi $t7, $t7, 1 #increment it
-	sw $t7, 0($t6) #store it back in 
-
-	la $t8, SMASH_TOTAL
-	lw $t8, 0($t8)
-	blt $t7, $t8, no_smash
-
-	#li $t8, 1
-	#sw $t8, ANGLE_CONTROL #absolute angle
-	#li $t8, 90
-	#sw $t8, ANGLE #angle 90
-	#li $t8, 10
-	#sw $t8, VELOCITY #velocity 10
-
-	li $t9, 1 #flag to say you should smash
-
-	#li $t8, 10000
-
-	#j	stall	# see if other interrupts are waiting
-
-#stall:
-	#ble $t8, 0, interrupt_dispatch
-	#sub $t8, $t8, 1
-	#j stall
-	sw $a1, FRUIT_SMOOSHED_ACK
-
-	j interrupt_dispatch
-
-no_smash:
-	sw $a1, FRUIT_SMOOSHED_ACK
-
-	j interrupt_dispatch
-
-bonk_interrupt:
-
-	beq $t9, 1, smash #check to see if its smash time
-
-	la $t6, count # count address
-	sw $zero, 0($t6) # count value
-
-	sw	$a1, BONK_ACK		# acknowledge interrupt
-	#sw	$zero, VELOCITY		# 0
-
-	j	interrupt_dispatch	# see if other interrupts are waiting
-
-smash:
-
-	la $t6, FRUIT_SMASH
-	li $t8, 0
-
-request_puzzle_interrupt:
-	
-	la $s0, puzzle_grid #load into s
-	lw $s0, 0($s0)
-	la $s1, puzzle_word # load into s
-	lw $s1, 0($s1)
-	#li $a2, 0
-	#li $a3, 0
-	j find_row_col_of_first_word #make a j, not jal
-	#jal search_neighbors
-
-done_request_puzzle:
-	sw $v0, SUBMIT_SOLUTION #add a new label that you will jump back to right before this
-	sw $a1, REQUEST_PUZZLE_ACK
-	
-	j interrupt_dispatch
 
 ############################################################
 
@@ -496,30 +259,44 @@ search_neighbors:
 
 #.globl find_row_col_of_first_word
 find_row_col_of_first_word:
+	la $a0, puzzle_grid #pointer to puzzle_grid
+	lw $a0, 8($a0)
+	la $a1, puzzle_word
+	lw $a1, 0($a1) #pointer to puzzle_word
 	li $a2, 0 #row
 	li $a3, 0 #col
 
-	sub $sp, $sp, 24
-	sw $ra, 0($sp)
-	sw $s0, 4($sp)
-	sw $s1, 8($sp)
-	sw $s2, 12($sp)
-	sw $s3, 16($sp)
-	sw $s4, 20($sp)
+	sub $sp, $sp, 28
+	sw $ra, 0($sp) 
+	sw $s0, 4($sp) #offset
+	sw $s1, 8($sp) #puzzle_grid[i][j]
+	sw $s2, 12($sp) #puzzle_word[0]
+	sw $s3, 16($sp) #num_rows
+	sw $s4, 20($sp) #num_cols
+	sw $s5, 24($sp) #temp rows/cols
 
-	#lw $s2, 0($a1) #puzzle_word[0]
-	lw $s3, num_rows
-	lw $s4, num_cols
+	lw $s2, 0($a1) #puzzle_word[0]
+
+	la $s3, num_rows
+	lw $s5, 0($a0) #number of rows
+	sw $s5, 0($s3) #store into num_rows
+	move $s3, $s5 #load into s3
+
+	la $s4, num_cols
+	lw $s5, 4($a0) #number of rows
+	sw $s5, 0($s4) #store into num_rows
+	move $s4, $s5 #load into s3
+
 	row_iterator:
 		bge $a2, $s3, exit #for(int i = $a2, i < num_rows; i++)
 
 	col_iterator:
 		bge $a3, $s4, row_increment #for(int j = $a3, j < num_col; j++)
-		mul $s0, $a2, $s4 #i * num_cols
+		mul $s0, $a2, $s4 #&puzzle_grid[i]
 		add $s0, $s0, $a3 #calculate ((i * num_cols) + j)
 		add $s0, $s0, $a0 #add this address to puzzle_grid to get &puzzle_grid[i][j]
 		lw $s1, 0($s0) #puzzle_grid[i][j]
-		beq $s1, $a1, exit #if(puzzle_grid[i][j] == puzzle_word[0]) then break
+		beq $s1, $s2, exit #if(puzzle_grid[i][j] == puzzle_word[0]) then break
 
 		addi $a3, $a3, 1
 		j col_iterator #increment j
@@ -532,23 +309,271 @@ find_row_col_of_first_word:
 	exit:
 		#all the $a registers should be set up at this point
 		jal search_neighbors
+		sw $v0, SUBMIT_SOLUTION
 
-		#Reset the stack pointer
-		sw $s0, 0($v0)
-		sw $s1, 4($v0)
-		sw $s2, 8($v0)
-		sw $s3, 12($sp)
-		sw $s4, 16($sp)
+		#Reset the static pointer
 		lw $ra, 0($sp)
-		add $sp, $sp, 24
+		lw $s0, 4($sp)
+		lw $s1, 8($sp)
+		lw $s2, 12($sp)
+		lw $s3, 16($sp)
+		lw $s4, 20($sp)
+		lw $s5, 24($sp)
+		add $sp, $sp, 28
 
-		jr	$ra
+		j wait
 
 ############################################################
 
 #END OF PUZZLE CODE
 
 ############################################################
+
+############################################################
+
+#ALL THE FRUIT SMASH CODE
+
+############################################################
+main:
+
+	sub $sp $sp 36
+
+	sw $ra, 0($sp) #return address
+	sw $s0, 4($sp) #puzzle
+	sw $s1, 8($sp) #word
+	sw $s2, 12($sp) #row
+	sw $s3, 16($sp) #col
+	sw $s4, 20($sp) #i
+	sw $s5, 24($sp) #next_row
+	sw $s6, 28($sp) #next_col
+	sw $s7, 32($sp) #next_node
+
+	#Enable the interrupts
+	la $t0, fruit_data
+	sw $t0, FRUIT_SCAN
+
+	la $s2, puzzle_received_flag
+	sw $zero, 0($s2) #puzzle hasn't been received yet
+	# enable interrupts
+	li	$t4, FRUIT_SMOOSHED_INT_MASK #timer interrupt enable bit
+	or	$t4, $t4, BONK_MASK	 			#bonk interrupt bit
+	or $t4, $t4, REQUEST_PUZZLE_INT_MASK #request_puzzle interrupt bit
+	or $t4, $t4, OUT_OF_ENERGY_INT_MASK #out_of_energy bit
+	or	$t4, $t4, 1		 		    #global interrupt enable
+	mtc0	$t4, $12		# set interrupt mask (Status register)
+
+
+bottom:
+	lw $t1, BOT_Y
+	bge $t1, 294, find_fruit
+	li $t2, 1
+	sw $t2, ANGLE_CONTROL #absolute angle
+	li $t2, 90
+	sw $t2, ANGLE #angle 90
+	li $t2, 10
+	sw $t2, VELOCITY #velocity 10
+
+find_fruit:
+	la $t6, count # count address
+	lw $t7, 0($t6) # count value
+	la $t6, SMASH_TOTAL
+	lw $t6, 0($t6)
+	bge $t7, $t6, get_bonked
+
+	li $t2, 10
+	sw $t2, VELOCITY #velocity 10
+	lw $t4, 0($t0)
+	lw $t3, 8($t0) #the x coordinate of the fruit
+	lw $t1, BOT_X
+	beq $t3, $t1, wait
+	bgt $t3, $t1, right
+	blt $t3, $t1, left
+
+get_bonked:
+	li $t8, 1
+	sw $t8, ANGLE_CONTROL #absolute angle
+	li $t8, 90
+	sw $t8, ANGLE #angle 90
+	li $t8, 10
+	sw $t8, VELOCITY #velocity 10
+	
+	la $t6, count # count address
+	lw $t7, 0($t6) # count value
+	beq $t7, $zero, find_fruit
+
+	j get_bonked
+
+right:
+
+	li $t2, 1
+	sw $t2, ANGLE_CONTROL #absolute angle
+	sw $zero, ANGLE #angle 0 (turn right)
+	lw $t1, BOT_X
+	beq $t3, $t1, wait
+	bgt $t3, $t1, main
+
+	#PUZZLE CODE
+	#la $a0, puzzle_grid
+	#lw $a0, 0($a0)
+	#la $a1, puzzle_word
+	#lw $a1, 0($a1)
+	#j find_row_col_of_first_word
+
+	#jal search_neighbors
+
+left:
+
+	li $t2, 1
+	sw $t2, ANGLE_CONTROL #absolute angle
+	li $t2, 180
+	sw $t2, ANGLE #angle 180 (left)
+	lw $t1, BOT_X
+	beq $t3, $t1, wait
+	blt $t3, $t1, main
+
+	#la $a0, puzzle_grid
+	#lw $a0, 0($a0)
+	#la $a1, puzzle_word
+	#lw $a1, 0($a1)
+	#j find_row_col_of_first_word
+
+#Once the X-coordinates of the Bot matches the X-coordinate of the fruit
+#It waits until the fruit falls down at the Bot
+
+wait:
+	
+	#PUZZLE STUFF
+	beq $s2, 1, find_row_col_of_first_word
+	sw $zero, 0($s2) #Reset the 
+
+	la $s0, puzzle_grid
+	sw $s0, REQUEST_PUZZLE
+
+	#FRUIT STUFF
+	la $t0, fruit_data
+	sw $t0, FRUIT_SCAN
+	sw $zero, VELOCITY #velocity 0
+	lw $t5, 0($t0) #id
+	bne $t4, $t5, find_fruit
+	
+	j wait
+
+
+.kdata				# interrupt handler data (separated just for readability)
+chunkIH:	.space 8	# space for two registers
+
+non_intrpt_str:	.asciiz "Non-interrupt exception\n"
+unhandled_str:	.asciiz "Unhandled interrupt type\n"
+
+
+.ktext 0x80000180
+interrupt_handler:
+.set noat
+	move	$k1, $at		# Save $at                               
+.set at
+	la	$k0, chunkIH
+	sw	$a0, 0($k0)		# Get some free registers                  
+	sw	$a1, 4($k0)		# by storing them to a global variable  
+	sw  $a2, 8($k0)   
+	sw 	$a3, 12($k0)
+
+
+	mfc0	$k0, $13		# Get Cause register                       
+	srl	$a0, $k0, 2                
+	and	$a0, $a0, 0xf		# ExcCode field                            
+	bne	$a0, 0, non_intrpt         
+
+interrupt_dispatch:			# Interrupt:                             
+	mfc0	$k0, $13		# Get Cause register, again                 
+	beq	$k0, 0, done		# handled all outstanding interrupts     
+
+	and	$a0, $k0, FRUIT_SMOOSHED_INT_MASK	# is there a smoosh interrupt?
+	bne	$a0, 0, fruit_smooshed_interrupt
+
+	and	$a0, $k0, BONK_MASK	# is there a bonk interrupt?                
+	bne	$a0, 0, bonk_interrupt 
+
+	# add dispatch for other interrupt types here.
+	and $a0, $k0, REQUEST_PUZZLE_INT_MASK
+	bne $a0, 0, request_puzzle_interrupt
+
+	#li	$v0, PRINT_STRING	# Unhandled interrupt types
+	la	$a0, unhandled_str
+	syscall 
+	j	done
+
+fruit_smooshed_interrupt:
+
+	la $t6, count # count address
+	lw $t7, 0($t6) # count value
+	addi $t7, $t7, 1 #increment it
+	sw $t7, 0($t6) #store it back in 
+
+	la $t8, SMASH_TOTAL
+	lw $t8, 0($t8)
+	blt $t7, $t8, no_smash
+
+	#li $t8, 1
+	#sw $t8, ANGLE_CONTROL #absolute angle
+	#li $t8, 90
+	#sw $t8, ANGLE #angle 90
+	#li $t8, 10
+	#sw $t8, VELOCITY #velocity 10
+
+	li $t9, 1 #flag to say you should smash
+
+	#li $t8, 10000
+
+	#j	stall	# see if other interrupts are waiting
+
+#stall:
+	#ble $t8, 0, interrupt_dispatch
+	#sub $t8, $t8, 1
+	#j stall
+	sw $a1, FRUIT_SMOOSHED_ACK
+
+	j interrupt_dispatch
+
+no_smash:
+	sw $a1, FRUIT_SMOOSHED_ACK
+
+	j interrupt_dispatch
+
+bonk_interrupt:
+
+	beq $t9, 1, smash #check to see if its smash time
+
+	la $t6, count # count address
+	sw $zero, 0($t6) # count value
+
+	sw	$a1, BONK_ACK		# acknowledge interrupt
+	#sw	$zero, VELOCITY		# 0
+
+	j	interrupt_dispatch	# see if other interrupts are waiting
+
+smash:
+
+	la $t6, FRUIT_SMASH
+	li $t8, 0
+
+request_puzzle_interrupt:
+	
+	la $a2, puzzle_received_flag
+	lw $a2, 0($a2)
+	bne $a2, $zero, interrupt_dispatch #if puzzle_received_flag != 0 don't do anything
+
+	#Actually set puzzle_received_flag to 1
+	li $a3, 1
+	la $a2, puzzle_received_flag
+	sw $a3, 0($a2)
+
+	la $a3, puzzle_word
+	sw $a3, REQUEST_WORD
+
+	sw $a1, REQUEST_PUZZLE_ACK
+
+	j interrupt_dispatch
+
 
 smashing:
 	sw $zero, 0($t6) #smash
