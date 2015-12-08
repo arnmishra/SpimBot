@@ -267,7 +267,7 @@ find_row_col_of_first_word:
 	li $a3, 0 #col
 
 	sub $sp, $sp, 28
-	sw $ra, 0($sp) 
+	sw $ra, 0($sp)
 	sw $s0, 4($sp) #offset
 	sw $s1, 8($sp) #puzzle_grid[i][j]
 	sw $s2, 12($sp) #puzzle_word[0]
@@ -352,6 +352,9 @@ main:
 	la $t0, fruit_data
 	sw $t0, FRUIT_SCAN
 
+	la $s0, puzzle_grid
+	sw $s0, REQUEST_PUZZLE
+
 	la $s2, puzzle_received_flag
 	sw $zero, 0($s2) #puzzle hasn't been received yet
 	# enable interrupts
@@ -361,7 +364,6 @@ main:
 	or $t4, $t4, OUT_OF_ENERGY_INT_MASK #out_of_energy bit
 	or	$t4, $t4, 1		 		    #global interrupt enable
 	mtc0	$t4, $12		# set interrupt mask (Status register)
-
 
 bottom:
 	lw $t1, BOT_Y
@@ -446,8 +448,8 @@ wait:
 	beq $s2, 1, find_row_col_of_first_word
 	sw $zero, 0($s2) #Reset the 
 
-	la $s0, puzzle_grid
-	sw $s0, REQUEST_PUZZLE
+	#la $s0, puzzle_grid
+	#sw $s0, REQUEST_PUZZLE
 
 	#FRUIT STUFF
 	la $t0, fruit_data
