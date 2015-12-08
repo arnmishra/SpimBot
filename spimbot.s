@@ -94,7 +94,7 @@ start:
 
 bottom:
 	lw $t1, BOT_Y
-	bge $t1, 290, find_fruit
+	bge $t1, 294, find_fruit
 	li $t2, 1
 	sw $t2, ANGLE_CONTROL #absolute angle
 	li $t2, 90
@@ -423,89 +423,72 @@ find_row_col_of_first_word:
 	#sw $a0, REQUEST_PUZZLE
 	la $a0, puzzle_grid
 	la $a1, puzzle_word
-	#lw $a1, 0($a1) #pointer to puzzle_word
 	li $a2, 0 #row
 	li $a3, 0 #col
 
-	solve_puzzle:
-	sub	$sp, $sp, 24
-	sw	$ra, 0($sp)
-	sw	$s0, 4($sp)
-	sw	$s1, 8($sp)
-	sw	$s2, 12($sp)
-	sw	$s3, 16($sp)
-	sw	$s4, 20($sp)
+	sub $sp, $sp, 32
+	sw $ra, 0($sp)
+	sw $s0, 4($sp) #offset
+	sw $s1, 8($sp) #puzzle_grid[i][j]
+	sw $s2, 12($sp) #puzzle_word[0]
+	sw $s3, 16($sp) #num_rows
+	sw $s4, 20($sp) #num_cols
+	sw $s5, 24($sp) #temp rows/cols
+	sw $s6, 28($sp)
 
-	move	$s0, $a0		# puzzle
-	move	$s1, $a1		# word
+	lb $s2, 0($a1) #puzzle_word[0]
 
-	lb	$t0, 0($s1)		# word[0]
-	beq	$t0, 0, sp_true		# word[0] == '\0'
+	la $s3, num_rows
+	lw $s5, 0($a0) #number of rows
+	sw $s5, 0($s3) #store into num_rows
+	move $s3, $s5 #load into s3
 
-	li	$s2, 0			# row = 0
+	la $s4, num_cols
+	lw $s5, 4($a0) #number of columns
+	sw $s5, 0($s4) #store into num_columns
+	move $s4, $s5 #load into s3
 
-sp_row_for:
-	lw	$t0, num_rows
-	bge	$s2, $t0, sp_false	# !(row < num_rows)
+	add $a0, $a0, 8
 
-	li	$s3, 0			# col = 0
+	row_iterator:
+		bge $a2, $s3, exit #for(int i = $a2, i < num_rows; i++)
 
-sp_col_for:
-	lw	$t0, num_cols
-	bge	$s3, $t0, sp_row_next	# !(col < num_cols)
+	col_iterator:
+		bge $a3, $s4, row_increment #for(int j = $a3, j < num_col; j++)
+		#mul $s0, $a2, 4
+		mul $s0, $a2, $s4 #&puzzle_grid[i]
+		#lw $s0, 0($s0) #puzzle_grid[i]
+		#mul $s6, $a3, 4
+		add $s0, $a3, $s0 #calculate ((4i * num_cols) + j)
+		add $s0, $s0, $a0 #add this address to puzzle_grid to get &puzzle_grid[i][j]
+		lb $s1, 0($s0) #puzzle_grid[i][j]
+		beq $s1, $s2, exit #if(puzzle_grid[i][j] == puzzle_word[0]) then break
 
-	move	$a0, $s0		# puzzle
-	move	$a1, $s2		# row
-	move	$a2, $s3		# col
-	jal	get_char		# $v0 = current_char
-	lb	$t0, 0($s1)		# target_char = word[0]
-	bne	$v0, $t0, sp_col_next	# !(current_char == target_char)
+		addi $a3, $a3, 1
+		j col_iterator #increment j
 
-	move	$a0, $s0		# puzzle
-	move	$a1, $s2		# row
-	move	$a2, $s3		# col
-	li	$a3, '*'
-	jal	set_char
+	row_increment:
+		addi $a2, $a2, 1
+		j row_iterator #increment i
 
-	move	$a0, $s0		# puzzle
-	add	$a1, $s1, 1		# word + 1
-	move	$a2, $s2		# row
-	move	$a3, $s3		# col
-	jal	search_neighbors
-	move	$s4, $v0		# exist
+	#found the row and col at this point
+	exit:
+		#all the $a registers should be set up at this point
+		jal search_neighbors
+		sw $v0, SUBMIT_SOLUTION
 
-	move	$a0, $s0		# puzzle
-	move	$a1, $s2		# row
-	move	$a2, $s3		# col
-	lb	$a3, 0($s1)		# word[0]
-	jal	set_char
+		#Reset the static pointer
+		lw $ra, 0($sp)
+		lw $s0, 4($sp)
+		lw $s1, 8($sp)
+		lw $s2, 12($sp)
+		lw $s3, 16($sp)
+		lw $s4, 20($sp)
+		lw $s5, 24($sp)
+		lw $s6, 28($sp)
+		add $sp, $sp, 32
 
-	bne	$s4, 0, sp_true		# if (exist)
-
-sp_col_next:
-	add	$s3, $s3, 1		# col++
-	j	sp_col_for
-
-sp_row_next:
-	add	$s2, $s2, 1		# row++
-	j	sp_row_for
-
-sp_false:
-	li	$v0, 0			# false
-	j	sp_done
-
-sp_true:
-	li	$v0, 1			# true
-
-sp_done:
-	lw	$ra, 0($sp)
-	lw	$s0, 4($sp)
-	lw	$s1, 8($sp)
-	lw	$s2, 12($sp)
-	lw	$s3, 16($sp)
-	lw	$s4, 20($sp)
-	add	$sp, $sp, 24
-	j wait
+		j wait
 
 ############################################################
 
