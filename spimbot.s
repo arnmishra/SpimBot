@@ -47,6 +47,7 @@ puzzle_word: .space 128
 node_memory: .space 4096
 puzzle_received_flag: .word 0 #puzzle_received_flag = 0
 new_node_address: .word node_memory
+num_solves: .word 0
 
 .globl num_rows
 num_rows: .space 4
@@ -68,21 +69,30 @@ directions:
 ############################################################
 main:
 	#Enable the interrupts
-	la $t0, fruit_data
-	sw $t0, FRUIT_SCAN
+	la $t5, num_solves
+	lw $t5, 0($t5)
+
+	bge $t5, 20, start
 
 	la $t0, puzzle_grid
 	sw $t0, REQUEST_PUZZLE
 
-start:
+	la $t5, num_solves
+	lw $t0, 0($t5)
+	add $t0, $t0, 1
+	sw $t0, 0($t5)
+
+	j start
+
+start:	
+
+	la $t0, fruit_data
+	sw $t0, FRUIT_SCAN
 
 	la $t4, puzzle_received_flag
 	lw $t4, 0($t4)
 
 	beq $t4, 1, solve_puzzle
-
-	la $t4, puzzle_received_flag
-	sw $zero, 0($t4) #puzzle hasn't been received yet
 
 	# enable interrupts
 	li	$t4, FRUIT_SMOOSHED_INT_MASK #timer interrupt enable bit
@@ -166,8 +176,8 @@ wait:
 	la $t0, fruit_data
 	sw $t0, FRUIT_SCAN
 	sw $zero, VELOCITY #velocity 0
-	lw $t5, 0($t0) #id
-	bne $t4, $t5, find_fruit
+	lw $t6, 0($t0) #id
+	bne $t4, $t6, find_fruit
 	
 	j wait
 
@@ -461,8 +471,14 @@ sp_done:
 	lw  $s6, 28($sp)
 	lw  $s7, 32($sp)
 	add	$sp, $sp, 36
-	j start
-	
+
+	la $t4, puzzle_received_flag
+	sw $zero, 0($t4) #puzzle hasn't been received yet
+
+	la $t4, node_memory
+	sw $t4, new_node_address
+	j main
+
 
 get_char:
 	lw	$v0, num_cols
