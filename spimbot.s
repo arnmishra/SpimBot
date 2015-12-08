@@ -37,7 +37,7 @@ REQUEST_WORD = 0xffff00dc
 NODE_SIZE = 12
 
 .data
-intro_str4: .asciiz "Find MEEEE\n"
+#intro_str4: .asciiz "Find MEEEE\n"
 .align 2
 fruit_data: .space 260 # fruit_data = malloc(260);
 count: .word 0 #count = 0
@@ -66,6 +66,13 @@ main:
 
 	la $s0, puzzle_grid
 	sw $s0, REQUEST_PUZZLE
+
+start:
+
+	la $s2, puzzle_received_flag
+	beq $s2, 1, find_row_col_of_first_word
+
+	sw $zero, 0($s2) #puzzle hasn't been received yet
 
 	# enable interrupts
 	li	$t4, FRUIT_SMOOSHED_INT_MASK #timer interrupt enable bit
@@ -97,6 +104,7 @@ find_fruit:
 	lw $t4, 0($t0)
 	lw $t3, 8($t0) #the x coordinate of the fruit
 	lw $t1, BOT_X
+	lw $t8, BOT_Y
 	beq $t3, $t1, wait
 	bgt $t3, $t1, right
 	blt $t3, $t1, left
@@ -122,7 +130,7 @@ right:
 	sw $zero, ANGLE #angle 0 (turn right)
 	lw $t1, BOT_X
 	beq $t3, $t1, wait
-	bgt $t3, $t1, main
+	bgt $t3, $t1, start
 
 	#PUZZLE CODE
 	#la $a0, puzzle_grid
@@ -141,7 +149,7 @@ left:
 	sw $t2, ANGLE #angle 180 (left)
 	lw $t1, BOT_X
 	beq $t3, $t1, wait
-	blt $t3, $t1, main
+	blt $t3, $t1, start
 
 	#la $a0, puzzle_grid
 	#lw $a0, 0($a0)
@@ -156,10 +164,7 @@ wait:
 	
 	#PUZZLE STUFF
 
-	beq $s2, 1, find_row_col_of_first_word
-
-	la $s2, puzzle_received_flag
-	sw $zero, 0($s2) #puzzle hasn't been received yet
+	
 
 	#la $s0, puzzle_grid
 	#sw $s0, REQUEST_PUZZLE
@@ -239,9 +244,9 @@ remove_node:
 	ret:
 		jr	$ra
 
-print_things:
-	la	$a0, intro_str4
-	jal	print_string
+#print_things:
+#	la	$a0, intro_str4
+#	jal	print_string
 
 #.globl search_neighbors
 search_neighbors:
@@ -404,6 +409,7 @@ ret2:
 #.globl find_row_col_of_first_word
 find_row_col_of_first_word:
 	la $a0, puzzle_grid #pointer to puzzle_grid
+	sw $s0, REQUEST_PUZZLE
 	lw $a0, 8($a0)
 	la $a1, puzzle_word
 	lw $a1, 0($a1) #pointer to puzzle_word
