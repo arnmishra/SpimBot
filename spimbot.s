@@ -48,6 +48,7 @@ node_memory: .space 4096
 puzzle_received_flag: .word 0 #puzzle_received_flag = 0
 new_node_address: .word node_memory
 num_solves: .word 0
+energy_flag: .word 1
 
 .globl num_rows
 num_rows: .space 4
@@ -67,12 +68,12 @@ directions:
 #ALL THE FRUIT SMASH CODE
 
 ############################################################
-main:
+fill_energy:
 	#Enable the interrupts
 	la $t5, num_solves
 	lw $t5, 0($t5)
 
-	bge $t5, 20, start
+	bge $t5, 10, main
 
 	la $t0, puzzle_grid
 	sw $t0, REQUEST_PUZZLE
@@ -82,9 +83,19 @@ main:
 	add $t0, $t0, 1
 	sw $t0, 0($t5)
 
-	j start
+	li $t0, 1
 
-start:	
+	la $t5, energy_flag
+	sw $t0, 0($t5)
+
+	j main
+
+main:	
+
+	la $t5, energy_flag
+	lw $t5, 0($t5)
+
+	beq $t5, 0, fill_energy #if there is no energy, go to main
 
 	la $t0, fruit_data
 	sw $t0, FRUIT_SCAN
@@ -103,14 +114,21 @@ start:
 	mtc0	$t4, $12		# set interrupt mask (Status register)
 
 bottom:
+	#la $t5, energy_flag
+	#lw $t5, 0($t5)
+
+	#beq $t5, 0, fill_energy #if there is no energy, go to main
+
+
 	lw $t1, BOT_Y
-	bge $t1, 294, find_fruit
+	bge $t1, 250, find_fruit
 	li $t2, 1
 	sw $t2, ANGLE_CONTROL #absolute angle
 	li $t2, 90
 	sw $t2, ANGLE #angle 90
 	li $t2, 10
 	sw $t2, VELOCITY #velocity 10
+	j bottom
 
 find_fruit:
 	la $t6, count # count address
@@ -130,6 +148,11 @@ find_fruit:
 	blt $t3, $t1, left
 
 get_bonked:
+	#la $t5, energy_flag
+	#lw $t5, 0($t5)
+
+	#beq $t5, 0, fill_energy #if there is no energy, go to main
+
 	li $t8, 1
 	sw $t8, ANGLE_CONTROL #absolute angle
 	li $t8, 90
@@ -145,18 +168,28 @@ get_bonked:
 
 
 right:
+	#la $t5, energy_flag
+	#lw $t5, 0($t5)
+
+	#beq $t5, 0, fill_energy #if there is no energy, go to main
+
 
 	li $t2, 1
 	sw $t2, ANGLE_CONTROL #absolute angle
 	sw $zero, ANGLE #angle 0 (turn right)
 	lw $t1, BOT_X
 	beq $t3, $t1, wait
-	bgt $t3, $t1, start
+	bgt $t3, $t1, main
 	j right
 
 	#jal search_neighbors
 
 left:
+	#la $t5, energy_flag
+	#lw $t5, 0($t5)
+
+	#beq $t5, 0, fill_energy #if there is no energy, go to main
+
 
 	li $t2, 1
 	sw $t2, ANGLE_CONTROL #absolute angle
@@ -164,20 +197,38 @@ left:
 	sw $t2, ANGLE #angle 180 (left)
 	lw $t1, BOT_X
 	beq $t3, $t1, wait
-	blt $t3, $t1, start
+	blt $t3, $t1, main
 	j left
 
 #Once the X-coordinates of the Bot matches the X-coordinate of the fruit
 #It waits until the fruit falls down at the Bot
 
 wait:
-	
-	#FRUIT STUFF
+	#la $t5, energy_flag
+	#lw $t5, 0($t5)
+
+	#beq $t5, 0, fill_energy #if there is no energy, go to main
+
+
 	la $t0, fruit_data
 	sw $t0, FRUIT_SCAN
-	sw $zero, VELOCITY #velocity 0
-	lw $t6, 0($t0) #id
-	bne $t4, $t6, find_fruit
+	#sw $zero, VELOCITY #velocity 0
+	lw $t6, 4($t0) #y-coordinate
+	blt $t6, 100, move_up
+	li $t6, 0
+	sw $t6, VELOCITY #velocity 10
+	lw $t4, 0($t0) #id
+	bne $t4, $t6, bottom
+	
+	j wait
+
+move_up:
+	li $t2, 1
+	sw $t2, ANGLE_CONTROL #absolute angle
+	li $t2, 270
+	sw $t2, ANGLE #angle 180 (up)
+	lw $t4, 0($t0) #id
+	bne $t4, $t6, bottom
 	
 	j wait
 
@@ -477,7 +528,7 @@ sp_done:
 
 	la $t4, node_memory
 	sw $t4, new_node_address
-	j main
+	j fill_energy
 
 
 get_char:
@@ -541,10 +592,25 @@ interrupt_dispatch:			# Interrupt:
 	and $a0, $k0, REQUEST_PUZZLE_INT_MASK
 	bne $a0, 0, request_puzzle_interrupt
 
+	and $a0, $k0, OUT_OF_ENERGY_INT_MASK
+	bne $a0, 0, out_of_energy_interrupt 
+
 	#li	$v0, PRINT_STRING	# Unhandled interrupt types
 	la	$a0, unhandled_str
 	syscall 
 	j	done
+
+out_of_energy_interrupt:
+	la $a0, energy_flag
+	sw $zero, 0($a0)
+
+
+	la $a0, num_solves
+	sw $zero, 0($a0)
+
+	sw $a1, OUT_OF_ENERGY_ACK
+
+	j interrupt_dispatch
 
 fruit_smooshed_interrupt:
 
