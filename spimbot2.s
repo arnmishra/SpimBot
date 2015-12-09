@@ -101,7 +101,6 @@ main:
 	lw $t4, 0($t4)
 
 	beq $t4, 1, solve_puzzle
-	
 
 	# enable interrupts
 	li	$t4, FRUIT_SMOOSHED_INT_MASK #timer interrupt enable bit
@@ -114,6 +113,8 @@ main:
 bottom:
 	la $t0, fruit_data
 	sw $t0, FRUIT_SCAN
+
+
 	lw $t1, BOT_Y
 	bge $t1, 150, find_fruit
 	li $t2, 1
