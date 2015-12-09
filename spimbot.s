@@ -97,13 +97,12 @@ main:
 
 	beq $t5, 0, fill_energy #if there is no energy, go to main
 
-	la $t0, fruit_data
-	sw $t0, FRUIT_SCAN
-
 	la $t4, puzzle_received_flag
 	lw $t4, 0($t4)
 
 	beq $t4, 1, solve_puzzle
+	la $t0, fruit_data
+	sw $t0, FRUIT_SCAN
 
 	# enable interrupts
 	li	$t4, FRUIT_SMOOSHED_INT_MASK #timer interrupt enable bit
@@ -114,14 +113,9 @@ main:
 	mtc0	$t4, $12		# set interrupt mask (Status register)
 
 bottom:
-	#la $t5, energy_flag
-	#lw $t5, 0($t5)
-
-	#beq $t5, 0, fill_energy #if there is no energy, go to main
-
-
+	
 	lw $t1, BOT_Y
-	bge $t1, 250, find_fruit
+	bge $t1, 150, find_fruit
 	li $t2, 1
 	sw $t2, ANGLE_CONTROL #absolute angle
 	li $t2, 90
@@ -148,10 +142,6 @@ find_fruit:
 	blt $t3, $t1, left
 
 get_bonked:
-	#la $t5, energy_flag
-	#lw $t5, 0($t5)
-
-	#beq $t5, 0, fill_energy #if there is no energy, go to main
 
 	li $t8, 1
 	sw $t8, ANGLE_CONTROL #absolute angle
@@ -168,10 +158,6 @@ get_bonked:
 
 
 right:
-	#la $t5, energy_flag
-	#lw $t5, 0($t5)
-
-	#beq $t5, 0, fill_energy #if there is no energy, go to main
 
 
 	li $t2, 1
@@ -185,10 +171,6 @@ right:
 	#jal search_neighbors
 
 left:
-	#la $t5, energy_flag
-	#lw $t5, 0($t5)
-
-	#beq $t5, 0, fill_energy #if there is no energy, go to main
 
 
 	li $t2, 1
@@ -204,31 +186,27 @@ left:
 #It waits until the fruit falls down at the Bot
 
 wait:
-	#la $t5, energy_flag
-	#lw $t5, 0($t5)
-
-	#beq $t5, 0, fill_energy #if there is no energy, go to main
 
 
 	la $t0, fruit_data
 	sw $t0, FRUIT_SCAN
 	#sw $zero, VELOCITY #velocity 0
-	lw $t6, 4($t0) #y-coordinate
-	blt $t6, 100, move_up
-	li $t6, 0
-	sw $t6, VELOCITY #velocity 10
-	lw $t4, 0($t0) #id
-	bne $t4, $t6, bottom
+
+	lw $t1, BOT_X
+	beq $t3, $t1, move_up
+	bgt $t3, $t1, right
+	blt $t3, $t1, left
 	
-	j wait
+	#j wait
 
 move_up:
 	li $t2, 1
 	sw $t2, ANGLE_CONTROL #absolute angle
 	li $t2, 270
 	sw $t2, ANGLE #angle 180 (up)
-	lw $t4, 0($t0) #id
-	bne $t4, $t6, bottom
+	#lw $t5, 0($t0) #id
+	#lw $t6, 4($t0) #y-coordinate
+	bne $t4, 0, bottom
 	
 	j wait
 
