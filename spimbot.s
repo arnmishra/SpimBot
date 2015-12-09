@@ -220,11 +220,6 @@ wait:
 	lw $t4, 0($t0) #id
 	bne $t4, $t6, bottom
 
-	lw $t1, BOT_X
-	beq $t3, $t1, move_up
-	bgt $t3, $t1, right
-	blt $t3, $t1, left
-	
 	j wait
 
 move_up:
